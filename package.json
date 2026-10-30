@@ -1,0 +1,20 @@
+{
+  "name": "trabajillos",
+  "version": "0.1.0",
+  "description": "Trabajillos: trabajos de informática en València sin pagar por contacto",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.1",
+    "cookie-session": "^2.1.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "nodemailer": "^6.9.16"
+  },
+  "private": true
+}
