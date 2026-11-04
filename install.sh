@@ -27,6 +27,17 @@ mkdir -p $DIR/backups && cp $DIR/data/trabajillos.db $DIR/backups/trabajillos-\$
 find $DIR/backups -name '*.db' -mtime +14 -delete
 CRON
 chmod +x /etc/cron.daily/trabajillos-backup
+# Actualización automática: cada 5 minutos comprueba GitHub y, si hay cambios, reconstruye la web
+cat > /usr/local/bin/trabajillos-autoupdate <<'UPD'
+#!/bin/sh
+cd /opt/trabajillos || exit 0
+git fetch -q origin main || exit 0
+[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && exit 0
+git reset -q --hard origin/main && docker compose up -d --build >> /var/log/trabajillos-update.log 2>&1
+echo "$(date -Is) actualizado a $(git rev-parse --short HEAD)" >> /var/log/trabajillos-update.log
+UPD
+chmod +x /usr/local/bin/trabajillos-autoupdate
+echo '*/5 * * * * root /usr/local/bin/trabajillos-autoupdate' > /etc/cron.d/trabajillos-autoupdate
 sleep 5
 echo; echo "== Estado"; docker compose ps --format 'table {{.Service}}\t{{.State}}'
 echo; echo "== Prueba local"; curl -s -o /dev/null -w "HTTP %{http_code}\n" -H "Host: $DOMAIN" http://localhost/ || true
