@@ -10,6 +10,7 @@ const ago = d => {
   if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
   return `hace ${Math.round(s / 86400)} días`;
 };
+const WA = (process.env.WHATSAPP_NUMBER || '').replace(/\D/g, '');
 const money = j => j.budget_max ? `${j.budget_min ? j.budget_min + '–' : 'hasta '}${j.budget_max} €` : 'A consultar';
 
 function layout({ title, desc, body, user, csrf, canonical, jsonld }) {
@@ -17,21 +18,24 @@ function layout({ title, desc, body, user, csrf, canonical, jsonld }) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${h(title)}</title><meta name="description" content="${h(desc || 'Publica gratis lo que necesitas y te contactan técnicos de informática de València. Sin pagar por contacto.')}">
 ${canonical ? `<link rel="canonical" href="${SITE}${h(canonical)}">` : ''}
-<meta property="og:title" content="${h(title)}"><meta property="og:description" content="${h(desc || '')}"><meta property="og:type" content="website">
+<meta property="og:title" content="${h(title)}"><meta property="og:description" content="${h(desc || 'Gratis para todos: nadie paga por contactar.')}"><meta property="og:type" content="website">
+<meta property="og:image" content="${SITE}/og.png"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:locale" content="es_ES"><meta property="og:site_name" content="Trabajillos">
+${canonical ? `<meta property="og:url" content="${SITE}${h(canonical)}">` : ''}<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.png" sizes="192x192"><link rel="apple-touch-icon" href="/favicon.png"><meta name="theme-color" content="#1d4e89">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css">${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g, '\\u003c')}</script>` : ''}
 </head><body>
 <header class="top"><div class="wrap nav">
   <a class="logo" href="/">trabajillos<span>.</span></a>
-  <nav><a href="/trabajos">Trabajos</a><a href="/ranking">Ranking</a>${user
-    ? `<a href="/panel">Mi panel</a><form method="post" action="/salir" class="inline"><input type="hidden" name="_csrf" value="${h(csrf)}"><button class="link">Salir</button></form>`
+  <nav><a href="/trabajos">Trabajos</a><a href="/ranking">Ranking</a><a class="hide-s" href="/empresas">Empresas</a>${user
+    ? `<a href="/panel">Mi panel</a><a class="hide-s" href="/incidencias">Incidencias</a><form method="post" action="/salir" class="inline"><input type="hidden" name="_csrf" value="${h(csrf)}"><button class="link">Salir</button></form>`
     : `<a href="/entrar">Entrar</a>`}<a class="btn small" href="/publicar">Publicar gratis</a></nav>
 </div></header>
 <main class="wrap">${body}</main>
 <footer class="foot"><div class="wrap">
   <p><b>trabajillos.</b> La forma gratis de encontrar a alguien de informática en València. Nadie paga por contactar.</p>
-  <p class="links"><a href="/servicios">Servicios por barrio</a><a href="/como-funciona">Cómo funciona</a><a href="/aviso-legal">Aviso legal</a><a href="/privacidad">Privacidad</a><a href="/condiciones">Condiciones</a><a href="/cookies">Cookies</a></p>
-</div></footer></body></html>`;
+  <p class="links"><a href="/servicios">Servicios por barrio</a><a href="/precios">Precios</a><a href="/guias">Guías</a><a href="/empresas">Empresas</a><a href="/tecnicos">Para técnicos</a><a href="/alternativa-cronoshare">Alternativa a Cronoshare</a><a href="/como-funciona">Cómo funciona</a><a href="/aviso-legal">Aviso legal</a><a href="/privacidad">Privacidad</a><a href="/condiciones">Condiciones</a><a href="/cookies">Cookies</a></p>
+</div></footer>${WA ? `<a class="wa" href="https://wa.me/${WA}?text=${encodeURIComponent('Hola, necesito ayuda con informática')}" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">WhatsApp</a>` : ''}</body></html>`;
 }
 
 const catOptions = sel => Object.entries(CATEGORIES).map(([k, c]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${h(c.name)}</option>`).join('');

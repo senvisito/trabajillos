@@ -11,8 +11,10 @@ const A = require('./assistant');
 const V = require('./views');
 const { CATEGORIES, BARRIOS, slugify } = require('./data');
 const { h, layout } = V;
+const S = require('./support');
+const G = require('./growth');
 
-for (const col of ['reset_token TEXT', 'reset_exp INTEGER']) { try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch {} }
+
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || '').toLowerCase();
 const app = express();
@@ -37,6 +39,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use(G.track);
 const csrf = req => `<input type="hidden" name="_csrf" value="${h(req.session.csrf)}">`;
 const needUser = (req, res, next) => req.user ? next() : res.redirect('/entrar?next=' + encodeURIComponent(req.originalUrl));
 const limiter = rateLimit({ windowMs: 15 * 60e3, limit: 30, standardHeaders: true, legacyHeaders: false });
@@ -54,12 +57,12 @@ function ranking(cat) {
 const jobsQ = (where, args = [], limit = 30) => db.prepare(`SELECT j.*, (SELECT COUNT(*) FROM responses r WHERE r.job_id=j.id) n_resp
   FROM jobs j WHERE j.hidden=0 ${where} ORDER BY j.created_at DESC LIMIT ${limit}`).all(...args);
 
-async function createUser({ email, pass, name, role, barrio, phone, skills }) {
+async function createUser({ email, pass, name, role, barrio, phone, skills, source }) {
   const base = slugify(name) || 'usuario'; let slug = base, i = 1;
   while (db.prepare('SELECT 1 FROM users WHERE slug=?').get(slug)) slug = `${base}-${++i}`;
   const hash = await bcrypt.hash(pass, 10);
-  const info = db.prepare(`INSERT INTO users (email,pass,name,slug,role,barrio,phone,skills,is_admin) VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(email, hash, name, slug, role, barrio, phone, skills || '', email === ADMIN_EMAIL ? 1 : 0);
+  const info = db.prepare(`INSERT INTO users (email,pass,name,slug,role,barrio,phone,skills,is_admin,source) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(email, hash, name, slug, role, barrio, phone, skills || '', email === ADMIN_EMAIL ? 1 : 0, source || null);
   return info.lastInsertRowid;
 }
 function validSignup(b) {
@@ -74,7 +77,7 @@ function validSignup(b) {
 
 // ---------- notificaciones ----------
 function notifyNewJob(job) {
-  send(ADMIN_EMAIL, `Nuevo trabajo: ${job.title}`, `${job.title}\n${job.barrio} · ${CATEGORIES[job.category].name}\n\n${job.description}\n\n${SITE}/trabajo/${job.id}`);
+  G.notifyAdmin(`🆕 Trabajo: ${job.title}\n${job.barrio} · ${CATEGORIES[job.category].name} · ${job.urgency}\n\n${job.description}\n\nOrigen: ${job.source || 'directo'}\n${SITE}/trabajo/${job.id}`);
   const pros = ranking(job.category).slice(0, 10);
   for (const p of pros) send(p.email, `Trabajo nuevo para ti en ${job.barrio}`,
     `Hola ${p.name},\n\nHay un trabajo que encaja contigo:\n"${job.title}" (${job.barrio}).\n\nTu asistente ya te ha preparado una respuesta. Entra y envíala en 10 segundos:\n${SITE}/trabajo/${job.id}`);
@@ -83,9 +86,10 @@ setInterval(() => {   // garantía de respuesta: aviso al administrador si un tr
   const late = db.prepare(`SELECT * FROM jobs j WHERE status='abierto' AND alerted=0 AND hidden=0 AND created_at < datetime('now','-24 hours')
     AND NOT EXISTS (SELECT 1 FROM responses r WHERE r.job_id=j.id)`).all();
   for (const j of late) {
-    send(ADMIN_EMAIL, `⚠ 24 h sin respuesta: ${j.title}`, `Nadie ha respondido todavía. Respóndelo tú:\n${SITE}/trabajo/${j.id}`);
+    G.notifyAdmin(`⚠ 24 h sin respuesta: ${j.title}\nRespóndelo tú:\n${SITE}/trabajo/${j.id}`);
     db.prepare('UPDATE jobs SET alerted=1 WHERE id=?').run(j.id);
   }
+  try { G.reminders(); } catch (e) { console.error('reminders', e); }
 }, 60 * 60e3).unref();
 
 // ---------- portada ----------
@@ -112,7 +116,8 @@ app.get('/', (req, res) => {
 <li><b>Lo cuentas con tus palabras.</b> El asistente lo ordena, te dice cuánto suele costar y qué detalles faltan.</li>
 <li><b>Te escriben técnicos.</b> Ves su valoración, sus trabajos y su precio antes de decidir.</li>
 <li><b>Eliges y valoras.</b> Tu reseña ayuda a los demás y sube a los buenos en el ranking.</li></ol>
-<p><a class="btn ghost" href="/registro?rol=profesional">Soy técnico: quiero trabajos gratis</a></p></section>` });
+<p><a class="btn ghost" href="/tecnicos">Soy técnico: quiero trabajos gratis</a> <a class="btn ghost" href="/empresas">Soy una empresa</a></p></section>
+<section class="narrow"><h2>¿Prefieres que te llamemos?</h2><p class="muted">Déjanos tu teléfono y te llamamos para ver qué te pasa. Sin compromiso.</p>${G.leadForm(req, 'llamada')}</section>` });
 });
 
 // ---------- asistente (cliente) ----------
@@ -160,11 +165,11 @@ app.post('/publicar', limiter, async (req, res) => {
   let uid = req.user?.id;
   if (!uid) {
     const s = validSignup(b); if (s.err) return fail(s.err);
-    uid = await createUser({ ...s, role: 'cliente', barrio: v.barrio });
+    uid = await createUser({ ...s, role: 'cliente', barrio: v.barrio, source: req.session.src });
     req.session.uid = uid;
   }
-  const info = db.prepare(`INSERT INTO jobs (client_id,title,description,category,barrio,modality,urgency,budget_min,budget_max) VALUES (?,?,?,?,?,?,?,?,?)`)
-    .run(uid, v.title, v.description, v.category, v.barrio, v.modality, v.urgency, v.budget_min, v.budget_max);
+  const info = db.prepare(`INSERT INTO jobs (client_id,title,description,category,barrio,modality,urgency,budget_min,budget_max,source) VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    .run(uid, v.title, v.description, v.category, v.barrio, v.modality, v.urgency, v.budget_min, v.budget_max, req.session.src || null);
   const job = db.prepare('SELECT * FROM jobs WHERE id=?').get(info.lastInsertRowid);
   notifyNewJob(job);
   res.redirect(`/trabajo/${job.id}?nuevo=1`);
@@ -211,27 +216,29 @@ ${crate && crate.n ? `<p class="muted small">Valoración de este cliente por otr
   if (owner || (me && me.is_admin)) {
     body += `<section><h2>Respuestas (${resp.length})</h2>${resp.map(r => {
       const s = stats[r.pro_id] || {};
-      return `<div class="card resp"><div class="row"><a href="/profesional/${h(r.slug)}"><b>${h(r.name)}</b></a><span>${s.n_rev ? V.stars(s.avg) + ' ' + s.avg.toFixed(1) : 'Nuevo'} · ${s.done || 0} trabajos</span></div>
+      return `<div class="card resp" id="p${r.pro_id}"><div class="row"><a href="/profesional/${h(r.slug)}"><b>${h(r.name)}</b></a><span>${s.n_rev ? V.stars(s.avg) + ' ' + s.avg.toFixed(1) : 'Nuevo'} · ${s.done || 0} trabajos</span></div>
 <p>${h(r.message)}</p>${r.price ? `<p><b>${r.price} €</b> aprox.</p>` : ''}
 ${j.status === 'abierto' && owner ? `<form method="post" action="/trabajo/${j.id}/aceptar/${r.pro_id}">${csrf(req)}<button class="btn small">Elegir a ${h(r.name.split(' ')[0])}</button></form>` : ''}
-${j.assigned_to === r.pro_id ? `<p class="ok">Elegido. Contacto: ${h(r.email)}${r.phone ? ' · ' + h(r.phone) : ''}</p>` : ''}</div>`;
+${j.assigned_to === r.pro_id ? `<p class="ok">Elegido. Contacto: ${h(r.email)}${r.phone ? ' · ' + h(r.phone) : ''}</p>` : ''}${S.threadHtml(me, j, r.pro_id, csrf(req))}</div>`;
     }).join('') || '<p class="muted">Todavía nadie ha respondido. Te avisamos por correo.</p>'}</section>`;
   }
   if (isPro && !owner) {
-    if (mine) body += `<p class="ok">Ya respondiste a este trabajo.${j.assigned_to === me.id ? ` ¡Te han elegido! Contacto del cliente: ${h(j.cemail)}${j.cphone ? ' · ' + h(j.cphone) : ''}` : ''}</p>`;
+    if (mine) body += `<section class="box" id="p${me.id}"><p class="ok">Ya respondiste a este trabajo.${j.assigned_to === me.id ? ` ¡Te han elegido! Contacto del cliente: ${h(j.cemail)}${j.cphone ? ' · ' + h(j.cphone) : ''}` : ''}</p>${S.threadHtml(me, j, me.id, csrf(req))}</section>`;
     else if (j.status === 'abierto') {
       const draft = A.draftReply(j, me, stats[me.id]);
       body += `<section class="box"><h2>Responder gratis</h2><p class="muted small">Tu asistente ha preparado este mensaje con tus datos. Cámbialo si quieres.</p>
 <form method="post" action="/trabajo/${j.id}/responder" class="form">${csrf(req)}<textarea name="message" rows="4" maxlength="1500" required>${h(draft)}</textarea>
 <label>Precio orientativo (€)<input name="price" inputmode="numeric" value="${j.budget_max || ''}"></label><button class="btn">Enviar respuesta</button></form></section>`;
     }
-  } else if (!me && j.status === 'abierto') body += `<p class="box">¿Eres técnico? <a href="/registro?rol=profesional&next=/trabajo/${j.id}">Crea tu perfil gratis</a> y responde a este trabajo sin pagar nada.</p>`;
+  } else if (!me && j.status === 'abierto') body += `<p class="box">¿Tienes un problema parecido? <a href="/publicar">Publícalo gratis</a>. ¿Eres técnico? <a href="/registro?rol=profesional&next=/trabajo/${j.id}">Crea tu perfil gratis</a> y responde a este trabajo sin pagar nada.</p>`;
 
+  body = body.replace('</article>', '</article>' + S.ticketHtml(me, { ...j, cid: undefined }, csrf(req)));
   if ((owner || (me && me.id === j.assigned_to)) && j.status === 'asignado')
     body += `<form method="post" action="/trabajo/${j.id}/terminar" class="box">${csrf(req)}<p>¿Ya está hecho?</p><button class="btn">Marcar como terminado</button></form>`;
   if (canReview) body += `<section class="box"><h2>Valora a ${owner ? h(assignedPro?.name || 'el profesional') : 'este cliente'}</h2>
 <form method="post" action="/trabajo/${j.id}/resena" class="form">${csrf(req)}<div class="rate">${[5, 4, 3, 2, 1].map(n => `<label><input type="radio" name="rating" value="${n}" required> ${'★'.repeat(n)}</label>`).join('')}</div>
 <textarea name="text" rows="3" maxlength="800" placeholder="${owner ? '¿Qué tal el trabajo?' : 'Solo lo verán otros profesionales, de forma agregada.'}"></textarea><button class="btn">Enviar valoración</button></form></section>`;
+  if (j.status === 'abierto') body += G.share(`${SITE}/trabajo/${j.id}`, `¿Alguien de informática en València? ${j.title}`);
   body += `<details class="report"><summary>Denunciar este anuncio</summary><form method="post" action="/denunciar" class="form">${csrf(req)}<input type="hidden" name="kind" value="job"><input type="hidden" name="target" value="${j.id}"><textarea name="reason" rows="2" maxlength="500" required placeholder="¿Qué problema hay?"></textarea><button class="btn small ghost">Enviar</button></form></details>`;
   res.page({ title: `${j.title} · ${j.barrio} · Trabajillos`, desc: j.description.slice(0, 155), canonical: `/trabajo/${j.id}`, body });
 });
@@ -253,14 +260,18 @@ app.post('/trabajo/:id/aceptar/:pro', needUser, (req, res) => {
   const j = ownJob(req, res); if (!j) return;
   const r = db.prepare('SELECT * FROM responses WHERE job_id=? AND pro_id=?').get(j.id, req.params.pro);
   if (j.client_id !== req.user.id || j.status !== 'abierto' || !r) return res.redirect(`/trabajo/${j.id}`);
-  db.prepare("UPDATE jobs SET status='asignado', assigned_to=? WHERE id=?").run(r.pro_id, j.id);
+  db.prepare("UPDATE jobs SET status='asignado', assigned_to=?, ticket='pendiente' WHERE id=?").run(r.pro_id, j.id);
+  db.prepare("INSERT INTO events (job_id,by_id,kind,value,note) VALUES (?,?,'estado','pendiente',?)").run(j.id, req.user.id, 'Técnico elegido');
   const p = db.prepare('SELECT * FROM users WHERE id=?').get(r.pro_id);
   send(p.email, `¡Te han elegido para "${j.title}"!`, `Contacto del cliente: ${req.user.name} · ${req.user.email}${req.user.phone ? ' · ' + req.user.phone : ''}\n\n${SITE}/trabajo/${j.id}`);
   res.redirect(`/trabajo/${j.id}`);
 });
 app.post('/trabajo/:id/terminar', needUser, (req, res) => {
   const j = ownJob(req, res); if (!j) return;
-  if ((j.client_id === req.user.id || j.assigned_to === req.user.id) && j.status === 'asignado') db.prepare("UPDATE jobs SET status='terminado' WHERE id=?").run(j.id);
+  if ((j.client_id === req.user.id || j.assigned_to === req.user.id) && j.status === 'asignado') {
+    db.prepare("UPDATE jobs SET status='terminado', ticket='resuelto' WHERE id=?").run(j.id);
+    db.prepare("INSERT INTO events (job_id,by_id,kind,value,note) VALUES (?,?,'estado','resuelto',?)").run(j.id, req.user.id, 'Marcado como terminado');
+  }
   res.redirect(`/trabajo/${j.id}`);
 });
 app.post('/trabajo/:id/resena', needUser, (req, res) => {
@@ -304,7 +315,7 @@ app.get('/profesional/:slug', (req, res) => {
 <p class="muted">${h(p.barrio || 'València')}${p.remote ? ' · también en remoto' : ''} · ${p.done} trabajos terminados</p>
 <p class="stars big">${p.n_rev ? `${V.stars(p.avg)} ${p.avg.toFixed(1)} (${p.n_rev} valoraciones)` : 'Nuevo en Trabajillos'}</p>
 <p>${h(p.bio || '')}</p><p>${skills.map(k => `<span class="pill">${h(CATEGORIES[k].short)}</span>`).join(' ')}</p>
-<p class="muted small">Comparte tu perfil: <code>${SITE}/profesional/${h(p.slug)}</code></p></article>
+${G.share(`${SITE}/profesional/${p.slug}?ref=perfil`, `${p.name}, técnico de informática en València`)}</article>
 <section><h2>Valoraciones</h2>${revs.map(r => `<div class="card"><p>${V.stars(r.rating)} · ${h(r.name.split(' ')[0])} · ${V.ago(r.created_at)}</p><p>${h(r.text || '')}</p></div>`).join('') || '<p class="muted">Todavía sin valoraciones.</p>'}</section>
 <details class="report"><summary>Denunciar este perfil</summary><form method="post" action="/denunciar" class="form">${csrf(req)}<input type="hidden" name="kind" value="user"><input type="hidden" name="target" value="${p.id}"><textarea name="reason" rows="2" maxlength="500" required></textarea><button class="btn small ghost">Enviar</button></form></details>` });
 });
@@ -333,8 +344,8 @@ app.post('/registro', limiter, async (req, res) => {
   const role = b.role === 'profesional' ? 'profesional' : 'cliente';
   if (s.err) return res.page({ title: 'Crear cuenta', body: signupForm(req, b, s.err) }, 400);
   const skills = [].concat(b.skills || []).filter(k => CATEGORIES[k]).join(',');
-  req.session.uid = await createUser({ ...s, role, barrio: BARRIOS.includes(b.barrio) ? b.barrio : null, phone: clean(b.phone, 20), skills });
-  if (role === 'profesional') send(ADMIN_EMAIL, `Nuevo técnico: ${s.name}`, `${s.name} (${s.email}) · ${b.barrio} · ${skills}`);
+  req.session.uid = await createUser({ ...s, role, barrio: BARRIOS.includes(b.barrio) ? b.barrio : null, phone: clean(b.phone, 20), skills, source: req.session.src });
+  G.notifyAdmin(`${role === 'profesional' ? '🧑‍🔧 Nuevo técnico' : '🙋 Nuevo cliente'}: ${s.name} (${s.email}) · ${b.barrio || ''} · ${skills}\nOrigen: ${req.session.src || 'directo'}`);
   res.redirect(safeNext(b.next));
 });
 const loginForm = (req, err = '') => `<section class="narrow"><h1>Entrar</h1>${err ? `<p class="error">${h(err)}</p>` : ''}
@@ -368,7 +379,7 @@ app.post('/nueva-clave/:t', limiter, async (req, res) => {
 
 // ---------- panel ----------
 app.get('/panel', needUser, (req, res) => {
-  const me = req.user; let body = `<h1>Hola, ${h(me.name.split(' ')[0])}</h1>`;
+  const me = req.user; let body = `<div class="row"><h1>Hola, ${h(me.name.split(' ')[0])}</h1><a class="btn ghost small" href="/incidencias">Mis incidencias</a></div>`;
   if (me.role === 'profesional') {
     const skills = (me.skills || '').split(',').filter(Boolean);
     const responded = new Set(db.prepare('SELECT job_id FROM responses WHERE pro_id=?').all(me.id).map(r => r.job_id));
@@ -389,14 +400,16 @@ app.get('/panel', needUser, (req, res) => {
 ${me.role === 'profesional' ? `<label>Sobre ti (lo verán los clientes)<textarea name="bio" rows="3" maxlength="600">${h(me.bio || '')}</textarea></label>
 <fieldset class="skills"><legend>Qué haces</legend>${Object.entries(CATEGORIES).map(([k, c]) => `<label class="check"><input type="checkbox" name="skills" value="${k}"${sk.has(k) ? ' checked' : ''}> ${h(c.short)}</label>`).join('')}</fieldset>
 <label class="check"><input type="checkbox" name="remote" value="1"${me.remote ? ' checked' : ''}> También trabajo en remoto</label>
+<label class="check"><input type="checkbox" name="digest" value="1"${me.digest ? ' checked' : ''}> Quiero el resumen diario de trabajos nuevos (9:00)</label>
 <p class="muted small">Tu perfil público: <a href="/profesional/${h(me.slug)}">${SITE}/profesional/${h(me.slug)}</a></p>` : ''}
 <button class="btn">Guardar</button></form></section>${me.is_admin ? '<p><a href="/admin">Administración</a></p>' : ''}`;
   res.page({ title: 'Mi panel · Trabajillos', body });
 });
 app.post('/perfil', needUser, (req, res) => {
   const b = req.body, skills = [].concat(b.skills || []).filter(k => CATEGORIES[k]).join(',');
-  db.prepare('UPDATE users SET name=?, barrio=?, phone=?, bio=?, skills=?, remote=? WHERE id=?')
-    .run(clean(b.name, 60) || req.user.name, BARRIOS.includes(b.barrio) ? b.barrio : req.user.barrio, clean(b.phone, 20), clean(b.bio, 600), skills, b.remote ? 1 : 0, req.user.id);
+  const pro = req.user.role === 'profesional';
+  db.prepare('UPDATE users SET name=?, barrio=?, phone=?, bio=?, skills=?, remote=?, digest=? WHERE id=?')
+    .run(clean(b.name, 60) || req.user.name, BARRIOS.includes(b.barrio) ? b.barrio : req.user.barrio, clean(b.phone, 20), pro ? clean(b.bio, 600) : req.user.bio, pro ? skills : req.user.skills, b.remote ? 1 : 0, pro ? (b.digest ? 1 : 0) : req.user.digest, req.user.id);
   res.redirect('/panel');
 });
 
@@ -405,7 +418,7 @@ app.post('/denunciar', limiter, (req, res) => {
   const kind = ['job', 'user', 'review'].includes(req.body.kind) ? req.body.kind : null, target = int(req.body.target), reason = clean(req.body.reason, 500);
   if (kind && target && reason) {
     db.prepare('INSERT INTO reports (kind,target_id,reason,reporter) VALUES (?,?,?,?)').run(kind, target, reason, req.user?.email || 'anónimo');
-    send(ADMIN_EMAIL, `Denuncia (${kind} ${target})`, `${reason}\n\n${SITE}/admin`);
+    G.notifyAdmin(`🚩 Denuncia (${kind} ${target}): ${reason}\n${SITE}/admin`);
   }
   res.page({ title: 'Gracias', body: '<section class="narrow"><p class="ok">Gracias. Lo revisaremos en menos de 48 horas.</p></section>' });
 });
@@ -414,7 +427,8 @@ app.get('/admin', needAdmin, (req, res) => {
   const reps = db.prepare('SELECT * FROM reports WHERE resolved=0 ORDER BY created_at DESC').all();
   const users = db.prepare('SELECT id,name,email,role,barrio,created_at,hidden FROM users ORDER BY id DESC LIMIT 50').all();
   const btn = (kind, id, label) => `<form method="post" action="/admin/ocultar" class="inline">${csrf(req)}<input type="hidden" name="kind" value="${kind}"><input type="hidden" name="id" value="${id}"><button class="link">${label}</button></form>`;
-  res.page({ title: 'Administración', body: `<h1>Administración</h1><h2>Denuncias pendientes (${reps.length})</h2>
+  const nl = db.prepare("SELECT COUNT(*) n FROM leads WHERE status='nuevo'").get().n;
+  res.page({ title: 'Administración', body: `<h1>Administración</h1><p><a class="btn small" href="/admin/leads">Contactos${nl ? ` (${nl} nuevos)` : ''}</a> <a class="btn small ghost" href="/admin/metricas">Métricas</a> <a class="btn small ghost" href="/incidencias">Incidencias</a></p><h2>Denuncias pendientes (${reps.length})</h2>
 ${reps.map(r => `<div class="card"><b>${h(r.kind)} #${r.target_id}</b> · ${h(r.reporter)} · ${V.ago(r.created_at)}<p>${h(r.reason)}</p>${btn(r.kind, r.target_id, 'Ocultar contenido')} ${btn('report', r.id, 'Marcar resuelta')}</div>`).join('') || '<p class="muted">Nada pendiente.</p>'}
 <h2>Últimos usuarios</h2><table><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Barrio</th><th></th></tr>${users.map(u => `<tr><td>${h(u.name)}</td><td>${h(u.email)}</td><td>${u.role}</td><td>${h(u.barrio || '')}</td><td>${u.hidden ? 'oculto' : btn('user', u.id, 'Ocultar')}</td></tr>`).join('')}</table>` });
 });
@@ -425,6 +439,8 @@ app.post('/admin/ocultar', needAdmin, (req, res) => {
   res.redirect('/admin');
 });
 
+S.mount(app, { needUser, limiter, notifyAdmin: G.notifyAdmin });
+G.mount(app, { ranking, limiter, needAdmin, csrf });
 require('./pages')(app, { ranking, jobsQ });
 
 app.use((req, res) => res.page({ title: 'No encontrado · Trabajillos', body: '<h1>Esta página no existe.</h1><p><a href="/">Volver al inicio</a></p>' }, 404));

@@ -48,7 +48,7 @@ ${jobs.length ? `<section><h2>Trabajos recientes</h2><div class="grid">${jobs.ma
 <p>Trabajillos es una plataforma que pone en contacto a personas que necesitan servicios de informática con profesionales. El titular no es parte de los acuerdos entre usuarios ni presta los servicios publicados, salvo cuando su propio equipo responde a un trabajo, en cuyo caso se identifica como tal.</p>
 <p>Puedes denunciar cualquier contenido con el enlace «Denunciar» de cada anuncio o perfil. Revisamos las denuncias en 48 horas.</p>`);
   info('/privacidad', 'Política de privacidad', `<p>Responsable: ${h(L.name)} (${h(L.email)}).</p>
-<p><b>Qué datos tratamos:</b> nombre, correo, contraseña cifrada, barrio, teléfono (opcional) y el contenido que publiques.</p>
+<p><b>Qué datos tratamos:</b> nombre, correo, contraseña cifrada, barrio, teléfono (opcional), el contenido que publiques y los mensajes que envíes dentro de cada trabajo. Si usas el formulario «Que me llamen» o el de empresas, tratamos los datos que pongas solo para contactarte sobre esa petición.</p>
 <p><b>Para qué:</b> prestar el servicio (publicar trabajos, poner en contacto, valoraciones) y enviarte avisos relacionados. Base legal: ejecución del contrato que aceptas al registrarte.</p>
 <p><b>Quién los ve:</b> tu correo y teléfono solo los ve el profesional o cliente con el que cierras un trabajo. Las valoraciones de clientes solo las ven profesionales registrados y de forma agregada.</p>
 <p><b>Cuánto tiempo:</b> mientras tengas cuenta. Puedes pedir acceso, rectificación o borrado escribiendo a ${h(L.email)}, y reclamar ante la AEPD.</p>
@@ -56,11 +56,12 @@ ${jobs.length ? `<section><h2>Trabajos recientes</h2><div class="grid">${jobs.ma
   info('/condiciones', 'Condiciones de uso', `<ol><li>Publicar y responder es gratis.</li><li>Publica solo trabajos reales y legales. No se permiten datos de contacto en anuncios ni contenido ofensivo.</li>
 <li>Las valoraciones deben ser sinceras y solo se pueden dejar tras un trabajo terminado.</li><li>Los acuerdos de precio y servicio son entre cliente y profesional.</li>
 <li>Podemos retirar contenido o cuentas que incumplan estas normas.</li></ol>`);
-  info('/cookies', 'Cookies', `<p>Solo usamos una cookie técnica necesaria para mantener tu sesión iniciada. No usamos cookies de publicidad ni de analítica de terceros, por eso no te pedimos consentimiento.</p>`);
+  info('/cookies', 'Cookies', `<p>Solo usamos una cookie técnica necesaria para mantener tu sesión iniciada. No usamos cookies de publicidad ni de analítica. Contamos las visitas de forma anónima y sin cookies: cada visitante se identifica con un código que no se puede asociar a ninguna persona y se borra cada día. Por eso no te pedimos consentimiento.</p>`);
 
-  app.get('/robots.txt', (req, res) => res.type('text').send(`User-agent: *\nAllow: /\nDisallow: /panel\nDisallow: /admin\nSitemap: ${SITE}/sitemap.xml\n`));
+  app.get('/robots.txt', (req, res) => res.type('text').send(`User-agent: *\nAllow: /\nDisallow: /panel\nDisallow: /admin\nDisallow: /incidencias\nSitemap: ${SITE}/sitemap.xml\n`));
   app.get('/sitemap.xml', (req, res) => {
-    const urls = ['/', '/trabajos', '/ranking', '/publicar', '/servicios', '/como-funciona'];
+    const urls = ['/', '/trabajos', '/ranking', '/publicar', '/servicios', '/como-funciona', '/empresas', '/tecnicos', '/precios', '/alternativa-cronoshare', '/guias'];
+    for (const g of require('./guides')) urls.push(`/guias/${g.slug}`);
     for (const k of Object.keys(CATEGORIES)) { urls.push(`/servicios/${k}`); for (const b of BARRIOS) if (!b.includes('remoto')) urls.push(`/servicios/${k}/${slugify(b)}`); }
     for (const p of ranking()) urls.push(`/profesional/${p.slug}`);
     for (const j of jobsQ('', [], 500)) urls.push(`/trabajo/${j.id}`);

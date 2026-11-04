@@ -78,3 +78,38 @@ code{background:#eef1f6;padding:2px 6px;border-radius:6px;word-break:break-all}
 .foot{margin-top:60px;background:var(--ink);color:#cfd7e6;padding-block:28px}
 .foot a{color:#fff}
 @media (max-width:720px){.hero{grid-template-columns:1fr}.two{grid-template-columns:1fr}.stats{grid-template-columns:repeat(3,1fr)}.stats b{font-size:22px}}
+
+/* ---------- v0.2: chat, seguimiento, captación, métricas ---------- */
+.chat{margin-top:.8rem;border-top:1px solid #e6e8ee;padding-top:.6rem}
+.chat summary{cursor:pointer;font-weight:600;color:#1d4e89}
+.msgs{display:flex;flex-direction:column;gap:.5rem;margin:.6rem 0;max-height:420px;overflow:auto}
+.msg{background:#f2f4f8;border-radius:12px 12px 12px 4px;padding:.5rem .75rem;max-width:85%;align-self:flex-start}
+.msg.me{background:#e3edf9;border-radius:12px 12px 4px 12px;align-self:flex-end}
+.msg p{margin:.2rem 0 0}
+.chatform{flex-direction:row;display:flex;gap:.5rem;align-items:flex-end}
+.chatform textarea{flex:1}
+.ticket .row{align-items:center}
+.tk{display:inline-block;padding:.2rem .6rem;border-radius:99px;font-size:.85rem;font-weight:600;background:#eef0f4;color:#384156;white-space:nowrap}
+.tk-pendiente,.tk-nuevo{background:#fff1e3;color:#a2500a}.tk-en-curso,.tk-contactado{background:#e3edf9;color:#1d4e89}
+.tk-esperando-cliente{background:#fdf6d8;color:#7a5d00}.tk-resuelto,.tk-cliente{background:#e2f5e9;color:#17703b}.tk-abierto{background:#eef0f4}.tk-descartado{background:#f3e3e3;color:#8a2a2a}
+.timeline{list-style:none;padding:0;margin:.5rem 0 1rem;border-left:2px solid #dfe3ea}
+.timeline li{padding:.2rem 0 .6rem 1rem;position:relative}
+.timeline li::before{content:"";position:absolute;left:-6px;top:.55rem;width:10px;height:10px;border-radius:50%;background:#1d4e89}
+.timeline p{margin:.2rem 0 0}
+table.tickets td{vertical-align:top}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.ok.big{font-size:1.15rem;padding:1rem}
+.cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin:1.5rem 0}
+.cta{margin:2rem 0}
+.share{margin:1.2rem 0;font-size:.95rem}
+.share a{font-weight:600}
+.bars{display:flex;align-items:flex-end;gap:3px;height:160px;border-bottom:1px solid #dfe3ea;padding-top:.5rem}
+.bars div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative}
+.bars span{display:block;background:#1d4e89;border-radius:3px 3px 0 0;min-height:2px}
+.bars i{font-style:normal;font-size:.65rem;color:#7a8296;text-align:center}
+.wa{position:fixed;right:16px;bottom:16px;background:#1fa855;color:#fff;font-weight:700;padding:.75rem 1.1rem;border-radius:99px;box-shadow:0 6px 20px rgba(0,0,0,.18);text-decoration:none;z-index:50}
+.wa:hover{background:#178a45;color:#fff}
+.prose table,.box table{width:100%;border-collapse:collapse;margin:1rem 0}
+.prose td,.prose th{padding:.5rem;border-bottom:1px solid #e6e8ee;text-align:left}
+@media (max-width:640px){.hide-s{display:none}.chatform{flex-direction:column;align-items:stretch}table.tickets th:nth-child(4),table.tickets td:nth-child(4){display:none}}
+.bars .h0{height:0%}.bars .h5{height:5%}.bars .h10{height:10%}.bars .h15{height:15%}.bars .h20{height:20%}.bars .h25{height:25%}.bars .h30{height:30%}.bars .h35{height:35%}.bars .h40{height:40%}.bars .h45{height:45%}.bars .h50{height:50%}.bars .h55{height:55%}.bars .h60{height:60%}.bars .h65{height:65%}.bars .h70{height:70%}.bars .h75{height:75%}.bars .h80{height:80%}.bars .h85{height:85%}.bars .h90{height:90%}.bars .h95{height:95%}.bars .h100{height:100%}

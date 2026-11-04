@@ -82,3 +82,39 @@ CREATE INDEX IF NOT EXISTS reviews_to ON reviews(to_id);
 `);
 
 module.exports = db;
+
+// ---------- v0.2: soporte, captación y métricas ----------
+db.exec(`
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  pro_id INTEGER NOT NULL REFERENCES users(id),   -- conversación cliente <-> este profesional
+  from_id INTEGER NOT NULL REFERENCES users(id),
+  text TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS messages_thread ON messages(job_id, pro_id, created_at);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY,
+  job_id INTEGER NOT NULL REFERENCES jobs(id),
+  by_id INTEGER REFERENCES users(id),
+  kind TEXT NOT NULL,            -- estado | nota
+  value TEXT, note TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS leads (
+  id INTEGER PRIMARY KEY,
+  kind TEXT NOT NULL,            -- llamada | empresa
+  name TEXT NOT NULL, phone TEXT, email TEXT, company TEXT, barrio TEXT,
+  message TEXT NOT NULL, source TEXT,
+  status TEXT DEFAULT 'nuevo',   -- nuevo | contactado | cliente | descartado
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS pageviews (day TEXT NOT NULL, path TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, path));
+CREATE TABLE IF NOT EXISTS sources (day TEXT NOT NULL, source TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, source));
+CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT);
+`);
+for (const [t, col] of [['jobs', "ticket TEXT DEFAULT 'pendiente'"], ['jobs', 'nudged INTEGER DEFAULT 0'], ['jobs', 'review_asked INTEGER DEFAULT 0'],
+  ['jobs', 'source TEXT'], ['users', 'source TEXT'], ['users', 'reset_token TEXT'], ['users', 'reset_exp INTEGER'], ['users', 'digest INTEGER DEFAULT 1']]) {
+  try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${col}`); } catch {}
+}
