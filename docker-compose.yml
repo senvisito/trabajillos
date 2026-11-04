@@ -5,9 +5,12 @@ services:
     env_file: .env
     volumes:
       - ./data:/data
-    expose:
-      - "3000"
+    ports:
+      # Solo accesible desde el propio servidor; el servidor web (Apache/nginx o Caddy) hace de proxy.
+      - "127.0.0.1:${APP_PORT:-3010}:3000"
   caddy:
+    # Solo se usa en servidores con los puertos 80/443 libres: docker compose --profile caddy up -d
+    profiles: ["caddy"]
     image: caddy:2.8
     restart: unless-stopped
     ports:
