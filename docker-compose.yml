@@ -26,6 +26,8 @@ services:
     env_file: .env
     environment:
       - INVESTIGA_URL=${INVESTIGA_URL:-https://investiga.civicloud.es}
+      - ESCANER_INTERNAL=http://escaner:3011
+      - ESCANER_PUBLIC=${ESCANER_URL:-https://escaner.civicloud.es}
     volumes:
       - investiga_data:/data
     ports:

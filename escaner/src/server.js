@@ -50,7 +50,8 @@ app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], 
 app.use(express.urlencoded({ extended: false, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1d' }));
 const cookies = req => Object.fromEntries((req.headers.cookie || '').split(';').map(c => c.trim().split('=')).filter(x => x[0]).map(([k, ...v]) => [k, decodeURIComponent(v.join('='))]));
-const limiter = rateLimit({ windowMs: 15 * 60e3, limit: 15, standardHeaders: true, legacyHeaders: false, message: 'Has hecho muchos análisis seguidos. Espera unos minutos.' });
+const internal = req => !req.headers['x-forwarded-for'] && /^(::ffff:)?(172\.(1[6-9]|2\d|3[01])|10\.|192\.168\.)/.test(req.socket.remoteAddress || '');
+const limiter = rateLimit({ windowMs: 15 * 60e3, limit: 15, standardHeaders: true, legacyHeaders: false, skip: internal, message: 'Has hecho muchos análisis seguidos. Espera unos minutos.' });
 
 function page(res, { title, desc, body, noindex, status = 200 }) {
   res.status(status).send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -102,6 +103,15 @@ app.post('/analizar', limiter, (req, res) => {
 app.get('/api/informe/:id', (req, res) => {
   const s = db.prepare('SELECT status, progress, error FROM scans WHERE id=?').get(req.params.id);
   res.set('cache-control', 'no-store').json(s || { status: 'no-existe' });
+});
+
+// resultado resumido en JSON (lo usa Investiga desde la red interna de Docker)
+app.get('/api/resultado/:id', (req, res) => {
+  const s = db.prepare('SELECT status, result FROM scans WHERE id=?').get(req.params.id);
+  if (!s) return res.json({ status: 'no-existe' });
+  if (s.status !== 'hecho') return res.json({ status: s.status });
+  const r = JSON.parse(s.result);
+  res.set('cache-control', 'no-store').json({ status: 'hecho', grade: r.grade, score: r.score, counts: r.counts, tech: r.tech.map(t => t.name + (t.version ? ' ' + t.version : '')) });
 });
 
 app.get('/informe/:id', (req, res) => {

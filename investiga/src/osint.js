@@ -3,6 +3,7 @@
 // Límites deliberados: no busca domicilios, familiares ni datos íntimos de particulares, ni hace reconocimiento facial.
 const dns = require('dns').promises;
 const { get, json } = require('./net');
+const X = require('./extra');
 
 const safe = async (p, fb = null) => { try { return await p; } catch { return fb; } };
 const now = () => new Date().toISOString();
@@ -128,7 +129,7 @@ async function certs(domain) {
   if (!all.length) return null;
   const first = all.map(c => c.not_before).sort()[0];
   const subs = new Set(all.flatMap(c => String(c.name_value).split('\n')).map(s => s.toLowerCase().replace(/^\*\./, '')).filter(s => s.endsWith(domain)));
-  return { firstCert: first ? first.slice(0, 10) : null, subdomains: subs.size };
+  return { firstCert: first ? first.slice(0, 10) : null, subdomains: subs.size, names: [...subs].filter(x => x !== domain).sort().slice(0, 25) };
 }
 
 // Web de la empresa: página principal + aviso legal/contacto. Extrae lo que la propia empresa publica.
@@ -139,17 +140,20 @@ async function website(domain) {
   const title = (html.match(/<title[^>]*>([^<]{1,200})/i) || [])[1];
   const desc = (html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{1,300})/i) || [])[1];
   const links = [...html.matchAll(/<a[^>]+href=["']([^"'#]+)["'][^>]*>([\s\S]{0,80}?)<\/a>/gi)].map(m => ({ href: m[1], text: strip(m[2]).toLowerCase() }));
-  const legalLinks = [...new Set(links.filter(l => /aviso[\s-]?legal|legal|privacidad|privacy|contact|quienes|qui[eé]nes|sobre[\s-]nosotros|about|empresa/i.test(l.href + ' ' + l.text))
-    .map(l => { try { return new URL(l.href, home.url).toString(); } catch { return null; } }).filter(u => u && new URL(u).hostname.replace(/^www\./, '') === domain))].slice(0, 4);
+  const legalLinks = [...new Set(links.filter(l => /aviso[\s-]?legal|legal|privacidad|privacy|contact|quienes|qui[eé]nes|sobre[\s-]nosotros|about|empresa|equipo|nosotros|servicios/i.test(l.href + ' ' + l.text))
+    .map(l => { try { return new URL(l.href, home.url).toString(); } catch { return null; } }).filter(u => u && new URL(u).hostname.replace(/^www\./, '') === domain))].slice(0, 7);
   const pages = [{ url: home.url, html }];
   for (const u of legalLinks) { const p = await safe(get(u, { maxBytes: 8e5, timeout: 7000 }), null); if (p && p.status < 400) pages.push({ url: p.url, html: p.body }); }
-  const found = { cif: [], razon: [], registro: [], emails: new Set(), phones: new Set(), social: new Set(), legalPage: null };
+  const found = { cif: [], razon: [], registro: [], emails: new Set(), phones: new Set(), social: new Set(), address: new Set(), legalPage: null };
+  const generator = (html.match(/<meta[^>]+name=["']generator["'][^>]+content=["']([^"']{1,80})/i) || [])[1];
+  const keywords = (html.match(/<meta[^>]+name=["']keywords["'][^>]+content=["']([^"']{1,300})/i) || [])[1];
   for (const p of pages) {
     const t = strip(p.html);
     if (/aviso legal|informaci[oó]n legal|datos identificativos|LSSI/i.test(t) && !found.legalPage && p.url !== home.url) found.legalPage = p.url;
     for (const m of t.matchAll(/\b(?:C\.?I\.?F\.?|N\.?I\.?F\.?)?\s*:?\s*([ABCDEFGHJNPQRSUVW][-\s]?\d{7}[-\s]?[0-9A-J])\b/g)) { const c = checkCIF(m[1]); if (c && !found.cif.some(x => x.value === c.value)) found.cif.push({ ...c, page: p.url }); }
     for (const m of t.matchAll(/(?:raz[oó]n social|denominaci[oó]n social|titular(?: del sitio| de la web)?)\s*:?\s*([A-ZÁÉÍÓÚÑ0-9][^:;|]{2,70}?(?:S\.?\s?L\.?\s?U?\.?|S\.?\s?A\.?\s?U?\.?|S\.?\s?L\.?\s?L\.?|S\.?\s?COOP\.?|Ltd\.?|SLP)?)(?=[,.;]|\s+(?:con|CIF|NIF|domicilio|inscrita|y\s)|$)/gi))
       if (found.razon.length < 3 && !found.razon.includes(m[1].trim())) found.razon.push(m[1].trim());
+    for (const m of t.matchAll(/((?:C\/|Calle|C\.|Avda\.?|Avenida|Av\.|Plaza|Pza\.?|Camino|Carrer|Paseo|Passeig|Pol\.?\s?Ind\.?|Pol[ií]gono|Ronda|Gran V[ií]a)\s[^|]{3,90}?\b\d{5}\b(?:\s[A-ZÁÉÍÓÚ][\wáéíóúñ'-]+){0,3})/g)) if (found.address.size < 3) found.address.add(m[1].replace(/\s+/g, ' ').trim());
     for (const m of t.matchAll(/(Registro Mercantil de [A-ZÁÉÍÓÚ][\wáéíóúñ ]{2,30}[^.]{0,120})/g)) if (found.registro.length < 2) found.registro.push(m[1].trim());
     for (const m of p.html.matchAll(/[\w.+-]+@[\w-]+\.[\w.-]+/g)) if (!/\.(png|jpe?g|gif|webp|svg)$/i.test(m[0]) && found.emails.size < 6) found.emails.add(m[0].toLowerCase());
     for (const m of t.matchAll(/(?:\+34\s?)?\b([6789]\d{2})[\s.]?(\d{2,3})[\s.]?(\d{2,3})[\s.]?(\d{0,3})\b/g)) { const n = (m[1] + m[2] + m[3] + m[4]); if (n.length === 9 && found.phones.size < 4) found.phones.add(n.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3')); }
@@ -157,7 +161,7 @@ async function website(domain) {
       if (found.social.size < 8 && !/sharer|share\?|intent\/|plugins|dialog/.test(m[0])) found.social.add(m[0].replace(/\/$/, ''));
   }
   return { reachable: true, url: home.url, title: title && title.trim(), description: desc, https: home.url.startsWith('https'), ...found,
-    emails: [...found.emails], phones: [...found.phones], social: [...found.social], pagesRead: pages.map(p => p.url) };
+    generator, keywords, emails: [...found.emails], phones: [...found.phones], social: [...found.social], address: [...found.address], pagesRead: pages.map(p => p.url) };
 }
 
 // ---------- informes por tipo ----------
@@ -170,7 +174,9 @@ function newReport(query, type, notes) {
 }
 
 async function domainSection(R, domain, depth = 'full') {
-  const [W, D, A, C, mx] = await Promise.all([website(domain), rdap(domain), wayback(domain), certs(domain), safe(dns.resolveMx(domain), [])]);
+  const [W, D, A, C, mx, DI, WB, SG] = await Promise.all([website(domain), rdap(domain), wayback(domain), certs(domain), safe(dns.resolveMx(domain), []),
+    X.dnsIntel(domain), X.waybackStats(domain), depth === 'full' || depth === 'light' ? X.securityGrade(domain) : null]);
+  const IPO = DI && DI.ips[0] ? await X.ipOwner(DI.ips[0]) : null;
   const src = W.url || `https://${domain}`;
   if (!W.reachable) R.signal('atencion', `La web ${domain} no responde.`, 'Conexión directa');
   else {
@@ -181,6 +187,9 @@ async function domainSection(R, domain, depth = 'full') {
     W.registro.forEach(r => R.fact('Registro Mercantil', r, 'Aviso legal de la web', W.legalPage || src, 'media'));
     W.emails.forEach(e => R.fact('Correo publicado', e, 'La propia web', src)); W.phones.forEach(p => R.fact('Teléfono publicado', p, 'La propia web', src));
     W.social.forEach(s => R.fact('Perfil enlazado desde la web', s, 'La propia web', src));
+    W.address.forEach(a => R.fact('Dirección publicada', a, 'La propia web', W.legalPage || src, 'media'));
+    R.fact('Hecha con', W.generator, 'La propia web', src, 'media'); R.fact('Palabras clave que usa', W.keywords, 'La propia web', src, 'media');
+    R.fact('Páginas leídas', W.pagesRead.length, 'La propia web', null);
     if (W.legalPage) R.signal('bien', 'Tiene página de aviso legal.', W.legalPage); else if (depth === 'full') R.signal('atencion', 'No hemos encontrado un aviso legal enlazado. En España, las webs con actividad económica deben identificar a su titular (LSSI).', 'Lectura de la web');
     if (!W.cif.length && depth === 'full') R.signal('atencion', 'La web no muestra un CIF/NIF visible.', 'Lectura de la web');
     if (!W.https) R.signal('atencion', 'La web no usa HTTPS.', 'Conexión directa');
@@ -194,6 +203,12 @@ async function domainSection(R, domain, depth = 'full') {
   if (since) { const months = (Date.now() - since) / (30.4 * 864e5);
     if (months < 6) R.signal('alerta', `El dominio es muy reciente (desde ${since.toISOString().slice(0, 10)}). Muchas webs fraudulentas tienen semanas o pocos meses.`, 'Fecha de alta / archivo');
     else R.signal('bien', `El dominio existe al menos desde ${since.getFullYear()} (${Math.floor(months / 12)} años).`, 'Fecha de alta / archivo'); }
+  if (C && C.names.length) R.fact('Subdominios', C.names.join(' · '), 'Certificate Transparency (crt.sh)', `https://crt.sh/?q=%25.${domain}`);
+  if (WB) R.fact('Historial en el archivo de Internet', `${WB.months} meses con copias (de ${WB.first} a ${WB.last})`, 'Wayback Machine (archive.org)', `https://web.archive.org/web/*/${domain}`);
+  if (DI) { R.fact('Servicios que usa', DI.services.join(' · '), 'Registros DNS (TXT, SPF y MX)', null, 'media'); R.fact('DNS gestionado por', DI.nsProvider, 'Registros NS', null); R.fact('IP del servidor', DI.ips.join(', '), 'DNS', null); }
+  if (IPO) R.fact('Alojada en', [IPO.org, IPO.name].filter(Boolean).join(' · ') + (IPO.country ? ` (${IPO.country})` : ''), 'RDAP de la IP', `https://rdap.org/ip/${DI.ips[0]}`);
+  if (SG) { R.fact('Nota de seguridad de la web', `${SG.grade} · ${SG.score}/100 · ${SG.counts.critica + SG.counts.alta} fallos graves, ${SG.counts.media} medios`, 'Radiografía Web', SG.url);
+    if ('AB'.includes(SG.grade)) R.signal('bien', `Su web saca una ${SG.grade} en seguridad.`, 'Radiografía Web'); else if ('EF'.includes(SG.grade)) R.signal('atencion', `Su web saca una ${SG.grade} en seguridad: tiene fallos que deberían corregir.`, 'Radiografía Web'); }
   if (mx.length) { const prov = mx.map(m => m.exchange).join(' '); R.fact('Correo gestionado por', /google/i.test(prov) ? 'Google Workspace' : /outlook|microsoft/i.test(prov) ? 'Microsoft 365' : mx[0].exchange, 'DNS (registros MX)', null); }
   R.link('Radiografía de seguridad de la web', `https://escaner.civicloud.es/?d=${enc(domain)}`);
   R.link('Opiniones en Trustpilot', `https://es.trustpilot.com/search?query=${enc(domain)}`);
@@ -203,13 +218,24 @@ async function domainSection(R, domain, depth = 'full') {
 }
 
 function companyLinks(R, name) {
-  R.link('Registro Mercantil (BORME) en el BOE', `https://www.boe.es/buscar/borme.php?campo%5B0%5D=TEXTO&dato%5B0%5D=${enc(name)}&accion=Buscar`);
+  R.link('Anuncios en el BORME (BOE)', `https://www.boe.es/buscar/anborme.php?campo%5B0%5D=TITULO&dato%5B0%5D=${enc(name)}&operador%5B0%5D=and&page_hits=50&sort_field%5B0%5D=FPU&sort_order%5B0%5D=desc&accion=Buscar`);
+  R.link('Actos del Registro Mercantil (LibreBORME)', `https://www.google.com/search?q=${enc('site:librebor.me "' + name + '"')}`);
+  R.link('Ficha en Empresite', `https://www.google.com/search?q=${enc('site:empresite.eleconomista.es "' + name + '"')}`);
   R.link('Ficha en einforma', `https://www.einforma.com/servlet/app/prod/BUSQUEDA_EMPRESAS/?ts_query=${enc(name)}`);
   R.link('Ficha en infoempresa', `https://www.infoempresa.com/es-es/es/buscar?q=${enc(name)}`);
   R.link('Google Maps', `https://www.google.com/maps/search/${enc(name)}`);
   R.link('LinkedIn', `https://www.linkedin.com/search/results/companies/?keywords=${enc(name)}`);
   R.link('Opiniones en Trustpilot', `https://es.trustpilot.com/search?query=${enc(name)}`);
   R.link('Noticias en Google', `https://news.google.com/search?q=${enc('"' + name + '"')}&hl=es`);
+}
+
+function mergeNews(...lists) { const seen = new Set(); return lists.flat().filter(n => { const k = (n.title || '').toLowerCase().slice(0, 60); if (!k || seen.has(k)) return false; seen.add(k); return true; }).slice(0, 20); }
+async function extrasFor(R, name) {
+  const [gn, gd, wm, geo] = await Promise.all([X.googleNews(name), news(name), X.wikiMentions(name), X.osm(name)]);
+  R.news = mergeNews(R.news, gn, gd);
+  if (R.news.length) R.signal('bien', `Aparece en ${R.news.length} noticias o publicaciones.`, 'Google News / GDELT');
+  wm.forEach(m => R.fact('Mención en Wikipedia', `${m.title}: …${m.snippet}…`, 'Wikipedia', m.url, 'media'));
+  geo.forEach(g => { R.fact('Ubicación en el mapa', `${g.name} · ${g.address}`, 'OpenStreetMap', g.url, 'media'); R.fact('Teléfono en el mapa', g.phone, 'OpenStreetMap', g.url, 'media'); R.fact('Horario', g.hours, 'OpenStreetMap', g.url, 'media'); R.fact('Web en el mapa', g.website, 'OpenStreetMap', g.url, 'media'); });
 }
 
 async function investigate({ query, type: hint, notes = '' }, onProgress = () => {}) {
@@ -224,7 +250,7 @@ async function investigate({ query, type: hint, notes = '' }, onProgress = () =>
     const d = toDomain(q); onProgress('Leyendo la web y su aviso legal');
     const W = await domainSection(R, d);
     const name = (W.razon && W.razon[0]) || (W.title || '').split(/[|\-–·:]/)[0].trim();
-    if (name && name.length > 2) { onProgress('Buscando noticias'); R.news = await news(name.length > 3 ? name : d); companyLinks(R, name); }
+    if (name && name.length > 2) { onProgress('Buscando noticias y ubicación'); await extrasFor(R, name.length > 3 ? name : d); companyLinks(R, name); }
   }
   else if (type === 'empresa' || type === 'cif') {
     let name = q;
@@ -242,25 +268,33 @@ async function investigate({ query, type: hint, notes = '' }, onProgress = () =>
         R.fact('Web oficial', wd.website, 'Wikidata', `https://www.wikidata.org/wiki/${wd.id}`); if (wd.extract) R.sections.push({ title: 'Resumen de Wikipedia', text: wd.extract, source: wd.wikiUrl }); }
       lei.forEach(l => R.fact('Entidad con LEI', `${l.name} · ${l.city || ''} (${l.country}) · ${l.status === 'ACTIVE' ? 'activa' : l.status}${l.regId ? ' · registro ' + l.regId : ''}`, 'GLEIF (identificador LEI)', `https://search.gleif.org/#/record/${l.lei}`, 'media'));
       if (!wd && !lei.length) R.limits.push('No aparece en Wikidata ni en el registro LEI (normal en pymes). Revisa los enlaces al BORME y directorios.');
-      const site = noteDomain || (wd && wd.website && toDomain(wd.website));
-      if (site) { onProgress('Leyendo su web y su aviso legal'); await domainSection(R, toDomain(site), 'light'); }
-      onProgress('Buscando noticias'); R.news = await news(q);
-      if (R.news.length) R.signal('bien', `Aparece en ${R.news.length} noticias recientes.`, 'GDELT');
+      let site = noteDomain || (wd && wd.website && toDomain(wd.website));
+      if (!site) {
+        onProgress('Buscando su web');
+        const disc = await X.discoverDomains(q);
+        const best = disc.find(d => d.live && !d.parked && d.score >= 4);
+        if (best) { site = (best.finalHost || best.domain); R.fact('Web encontrada', `${site}${best.title ? ' — ' + best.title : ''}`, 'Búsqueda de dominios con su nombre', `https://${site}`, 'media'); }
+        disc.filter(d => d !== best).slice(0, 6).forEach(d => R.fact('Otro dominio con ese nombre', `${d.domain} · ${!d.live ? 'registrado, sin web' : d.parked ? 'aparcado o sin contenido' : (d.title || 'con web')}`, 'DNS y conexión directa', d.live ? `https://${d.domain}` : null, 'media'));
+      }
+      if (site) { onProgress('Leyendo su web, su aviso legal y su seguridad'); await domainSection(R, toDomain(site), 'full'); }
+      else R.limits.push('No hemos encontrado una web con ese nombre. Si la conoces, escríbela en «Lo que ya sabes» y la analizaremos.');
+      onProgress('Buscando noticias, menciones y ubicación'); await extrasFor(R, q);
     }
     companyLinks(R, name);
   }
   else if (type === 'persona') {
     R.limits.push('Para personas solo mostramos presencia pública y profesional (cargos, noticias, perfiles profesionales). No buscamos domicilios, familiares, teléfonos personales ni identificamos a nadie por su cara.');
     onProgress('Buscando presencia pública');
-    const [wd, nw] = await Promise.all([wikidata(q, true), news(q)]);
+    const [wd, nw, gn, wm] = await Promise.all([wikidata(q, true), news(q), X.googleNews(q), X.wikiMentions(q)]);
+    wm.forEach(m => R.fact('Mención en Wikipedia', `${m.title}: …${m.snippet}…`, 'Wikipedia', m.url, 'media'));
     if (wd) { R.fact('Persona con perfil público', `${wd.label}${wd.description ? ' — ' + wd.description : ''}`, 'Wikidata', `https://www.wikidata.org/wiki/${wd.id}`, 'media');
       R.fact('Ocupación', wd.occupation, 'Wikidata', `https://www.wikidata.org/wiki/${wd.id}`); R.fact('Cargos', wd.position, 'Wikidata', `https://www.wikidata.org/wiki/${wd.id}`);
       R.fact('Trabaja o ha trabajado en', wd.employer, 'Wikidata', `https://www.wikidata.org/wiki/${wd.id}`);
       if (wd.extract) R.sections.push({ title: 'Resumen de Wikipedia', text: wd.extract, source: wd.wikiUrl });
       R.signal('atencion', 'Puede haber otras personas con el mismo nombre: comprueba que el perfil corresponde a quien buscas.', 'Homónimos'); }
-    R.news = nw;
-    if (!wd && !nw.length) R.limits.push('No hay información pública relevante sobre este nombre en las fuentes consultadas. Es lo normal en personas que no tienen actividad pública.');
-    R.link('Cargos en sociedades (BORME)', `https://www.boe.es/buscar/borme.php?campo%5B0%5D=TEXTO&dato%5B0%5D=${enc(q)}&accion=Buscar`);
+    R.news = mergeNews(gn, nw);
+    if (!wd && !R.news.length) R.limits.push('No hay información pública relevante sobre este nombre en las fuentes consultadas. Es lo normal en personas que no tienen actividad pública.');
+    R.link('Cargos en sociedades (LibreBORME)', `https://www.google.com/search?q=${enc('site:librebor.me "' + q + '"')}`);
     R.link('Perfil profesional en LinkedIn', `https://www.linkedin.com/search/results/people/?keywords=${enc(q)}`);
     R.link('Noticias en Google', `https://news.google.com/search?q=${enc('"' + q + '"')}&hl=es`);
   }
