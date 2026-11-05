@@ -72,7 +72,7 @@ app.get('/', (req, res) => {
 <p class="kicker">Gratis · Sin registro · En español</p>
 <h1>¿Es segura tu web?<br><span>Te lo decimos en 30 segundos.</span></h1>
 <p class="lead">Escribe un dominio y te damos una radiografía: certificado, cabeceras de seguridad, correo (SPF, DMARC, DKIM), versiones con vulnerabilidades conocidas, subdominios y tecnologías. Con nota de la A a la F y qué hacer en cada caso.</p>
-${scanForm()}<p class="muted small">${n ? `${n.toLocaleString('es-ES')} webs analizadas · ` : ''}Análisis pasivo: no atacamos ni probamos contraseñas.</p></section>
+${scanForm(normalizeDomain(req.query.d) || "")}<p class="muted small">${n ? `${n.toLocaleString('es-ES')} webs analizadas · ` : ''}Análisis pasivo: no atacamos ni probamos contraseñas.</p></section>
 <section id="que-mira" class="grid3">
 <div class="card"><h3>🔒 HTTPS y certificado</h3><p>Validez, caducidad, protocolos antiguos (TLS 1.0/1.1), HSTS y redirección a HTTPS.</p></div>
 <div class="card"><h3>🧱 Cabeceras de seguridad</h3><p>CSP, protección contra clickjacking, cookies seguras, contenido mixto y versiones que el servidor enseña.</p></div>

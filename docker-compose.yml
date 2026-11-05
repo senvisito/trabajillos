@@ -19,6 +19,17 @@ services:
       - escaner_data:/data
     ports:
       - "127.0.0.1:${ESCANER_PORT:-3011}:3011"
+  investiga:
+    # Investiga (OSINT de fuentes públicas). Se publica en https://investiga.civicloud.es con un proxy a 127.0.0.1:3012
+    build: ./investiga
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - INVESTIGA_URL=${INVESTIGA_URL:-https://investiga.civicloud.es}
+    volumes:
+      - investiga_data:/data
+    ports:
+      - "127.0.0.1:${INVESTIGA_PORT:-3012}:3012"
   caddy:
     # Solo se usa en servidores con los puertos 80/443 libres: docker compose --profile caddy up -d
     profiles: ["caddy"]
@@ -37,3 +48,4 @@ services:
 volumes:
   caddy_data:
   escaner_data:
+  investiga_data:
