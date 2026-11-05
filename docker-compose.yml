@@ -8,6 +8,17 @@ services:
     ports:
       # Solo accesible desde el propio servidor; el servidor web (Apache/nginx o Caddy) hace de proxy.
       - "127.0.0.1:${APP_PORT:-3010}:3000"
+  escaner:
+    # Radiografía Web (escáner de seguridad). Se publica en https://escaner.civicloud.es con un proxy a 127.0.0.1:3011
+    build: ./escaner
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - ESCANER_URL=${ESCANER_URL:-https://escaner.civicloud.es}
+    volumes:
+      - escaner_data:/data
+    ports:
+      - "127.0.0.1:${ESCANER_PORT:-3011}:3011"
   caddy:
     # Solo se usa en servidores con los puertos 80/443 libres: docker compose --profile caddy up -d
     profiles: ["caddy"]
@@ -25,3 +36,4 @@ services:
       - app
 volumes:
   caddy_data:
+  escaner_data:
