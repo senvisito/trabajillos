@@ -38,11 +38,18 @@ chmod +x /etc/cron.daily/trabajillos-backup
 # Actualización automática: cada 5 minutos comprueba GitHub y, si hay cambios, reconstruye la web
 cat > /usr/local/bin/trabajillos-autoupdate <<'UPD'
 #!/bin/sh
+# Actualiza desde GitHub. Si una construcción falla, lo reintenta en la siguiente pasada (cada 5 min).
 cd /opt/trabajillos || exit 0
+LOG=/var/log/trabajillos-update.log
 git fetch -q origin main || exit 0
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && exit 0
-git reset -q --hard origin/main && docker compose up -d --build --remove-orphans >> /var/log/trabajillos-update.log 2>&1
-echo "$(date -Is) actualizado a $(git rev-parse --short HEAD)" >> /var/log/trabajillos-update.log
+TARGET=$(git rev-parse origin/main)
+[ "$TARGET" = "$(cat .deployed 2>/dev/null)" ] && exit 0
+git reset -q --hard origin/main
+if docker compose build >> $LOG 2>&1 && docker compose up -d --remove-orphans >> $LOG 2>&1; then
+  echo "$TARGET" > .deployed; echo "$(date -Is) OK actualizado a $(git rev-parse --short HEAD)" >> $LOG
+else
+  echo "$(date -Is) ERROR al construir $(git rev-parse --short HEAD); se reintentará" >> $LOG
+fi
 UPD
 chmod +x /usr/local/bin/trabajillos-autoupdate
 echo '*/5 * * * * root /usr/local/bin/trabajillos-autoupdate' > /etc/cron.d/trabajillos-autoupdate
