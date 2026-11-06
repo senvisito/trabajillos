@@ -266,7 +266,20 @@ ${req.query.e ? '<p class="err">Contraseña incorrecta</p>' : ''}<label>Contrase
 ProxyPass /.well-known/acme-challenge/ !
 ProxyPass / http://127.0.0.1:3013/
 ProxyPassReverse / http://127.0.0.1:3013/
-RequestHeader set X-Forwarded-Proto "https"</pre></form>` });
+RequestHeader set X-Forwarded-Proto "https"</pre></form>
+<form class="glass" method="post" action="/admin/clave">${csrfIn(req)}<h2>Contraseña de administración</h2>
+<div class="two"><label>Contraseña actual<input type="password" name="actual" required autocomplete="current-password"></label>
+<label>Nueva contraseña (mín. 10 caracteres)<input type="password" name="nueva" minlength="10" required autocomplete="new-password"></label></div>
+<button class="send">Cambiar contraseña de administración</button></form>` });
+});
+app.post('/admin/clave', loginLimit, (req, res) => {
+  if (!isAdmin(req)) return res.redirect('/admin');
+  if (!bcrypt.compareSync(String(req.body.actual || ''), adminHash)) return res.redirect('/admin?e=' + encodeURIComponent('La contraseña actual no es correcta'));
+  const n = String(req.body.nueva || '');
+  if (n.length < 10) return res.redirect('/admin?e=' + encodeURIComponent('La nueva contraseña debe tener al menos 10 caracteres'));
+  adminHash = bcrypt.hashSync(n, 10);
+  db.prepare("INSERT INTO kv (k,v) VALUES ('admin',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v").run(adminHash);
+  res.redirect('/admin?ok=1');
 });
 app.post('/admin/entrar', loginLimit, (req, res) => { if (!bcrypt.compareSync(String(req.body.pass || ''), adminHash)) return res.redirect('/admin?e=1'); req.session.admin = true; res.redirect('/admin'); });
 app.post('/admin/crear', (req, res) => {
