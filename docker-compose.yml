@@ -32,6 +32,17 @@ services:
       - investiga_data:/data
     ports:
       - "127.0.0.1:${INVESTIGA_PORT:-3012}:3012"
+  dj:
+    # Peticiones al DJ (varias webs por dominio). dj.pideporesaboquitadj.com -> proxy a 127.0.0.1:3013
+    build: ./dj
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DJ_DEFAULT_HOST=${DJ_DEFAULT_HOST:-dj.pideporesaboquitadj.com}
+    volumes:
+      - dj_data:/data
+    ports:
+      - "127.0.0.1:${DJ_PORT:-3013}:3013"
   caddy:
     # Solo se usa en servidores con los puertos 80/443 libres: docker compose --profile caddy up -d
     profiles: ["caddy"]
@@ -51,3 +62,4 @@ volumes:
   caddy_data:
   escaner_data:
   investiga_data:
+  dj_data:

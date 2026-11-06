@@ -7,10 +7,11 @@ Este repositorio contiene **tres webs** que se despliegan solas en el servidor `
 | Trabajillos (marketplace de informática en València) | `/` (`src/`, `public/`) | 3010 | trabajillos.civicloud.es |
 | Radiografía Web (escáner de seguridad pasivo) | `escaner/` | 3011 | escaner.civicloud.es |
 | Investiga (OSINT de fuentes públicas) | `investiga/` | 3012 | investiga.civicloud.es |
+| Peticiones al DJ (multi-dominio) | `dj/` | 3013 | dj.pideporesaboquitadj.com y los que se creen en /admin |
 
 ## Cómo se despliega
 - Cada push a `main` se instala solo: un cron en el servidor (`/usr/local/bin/trabajillos-autoupdate`, cada 5 min) hace `git reset --hard origin/main`, `docker compose build` y `docker compose up -d`. Si la construcción falla, lo reintenta.
-- `docker-compose.yml` define los servicios `app`, `escaner` e `investiga`, todos publicados solo en `127.0.0.1`. Apache (ISPConfig) hace de proxy.
+- `docker-compose.yml` define los servicios `app`, `escaner`, `investiga` y `dj`, todos publicados solo en `127.0.0.1`. Apache (ISPConfig) hace de proxy.
 - Log del despliegue: `/var/log/trabajillos-update.log`.
 
 ## Stack
