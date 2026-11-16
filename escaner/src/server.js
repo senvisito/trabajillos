@@ -23,6 +23,7 @@ CREATE INDEX IF NOT EXISTS scans_domain ON scans(domain, created_at);
 CREATE TABLE IF NOT EXISTS verifs (domain TEXT NOT NULL, vid TEXT NOT NULL, token TEXT NOT NULL, verified_at TEXT, PRIMARY KEY (domain, vid));
 CREATE TABLE IF NOT EXISTS stats (day TEXT PRIMARY KEY, scans INTEGER DEFAULT 0);`);
 
+const ASSET_V = require('crypto').createHash('md5').update(fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'))).digest('hex').slice(0, 8);
 const h = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const SEV = { critica: 'Crítico', alta: 'Alto', media: 'Medio', baja: 'Bajo', info: 'Información', ok: 'Correcto' };
 
@@ -57,8 +58,8 @@ function page(res, { title, desc, body, noindex, status = 200 }) {
   res.status(status).send(`<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${h(title)}</title><meta name="description" content="${h(desc || 'Analiza gratis la seguridad de cualquier web: certificado, cabeceras, correo, versiones con vulnerabilidades y más. Explicado en español, sin registro.')}">
 ${noindex ? '<meta name="robots" content="noindex">' : ''}<meta property="og:title" content="${h(title)}"><meta property="og:image" content="${SITE}/og.png"><meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="/favicon.svg"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/style.css"></head><body>
+<link rel="icon" href="/favicon.svg?v=${ASSET_V}"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css?v=${ASSET_V}"></head><body>
 <header class="top"><div class="wrap nav"><a class="logo" href="/"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="28" cy="28" r="14" fill="none" stroke="#ef3340" stroke-width="6"/><path d="M38 38l12 12" stroke="#ef3340" stroke-width="7" stroke-linecap="round"/></svg>${h(NAME)}</a><nav><a href="/#que-mira">Qué analiza</a><a href="/sello">Sello</a><a href="/privacidad">Privacidad</a></nav></div></header>
 <main class="wrap">${body}</main>
 <footer class="foot"><div class="wrap"><p><b>${h(NAME)}</b> · Análisis pasivo y gratuito. Solo miramos lo que cualquier navegador ve. Nunca atacamos ni probamos contraseñas.</p>
@@ -193,7 +194,7 @@ app.post('/verificar', limiter, async (req, res) => {
 
 // ---------- sello para poner en la web ----------
 function badge(domain, grade, score) {
-  const col = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', E: '#dc2626', F: '#b91c1c' }[grade] || '#64748b';
+  const col = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', E: '#dc2626', F: '#b91c1c' }[grade] || '#6b6b74';
   const label = grade ? `Seguridad ${grade} · ${score}/100 · CiviRed` : 'Sin analizar · CiviRed';
   // Marca CiviRed: "Civi" en gris, "Red" en rojo y las ondas wifi sobre la d
   return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="44" viewBox="0 0 190 44" role="img" aria-label="${h(label)}">
