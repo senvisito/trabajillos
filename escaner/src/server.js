@@ -59,7 +59,7 @@ function page(res, { title, desc, body, noindex, status = 200 }) {
 ${noindex ? '<meta name="robots" content="noindex">' : ''}<meta property="og:title" content="${h(title)}"><meta property="og:image" content="${SITE}/og.png"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/favicon.svg"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/style.css"></head><body>
-<header class="top"><div class="wrap nav"><a class="logo" href="/"><span class="dot"></span>${h(NAME)}</a><nav><a href="/#que-mira">Qué analiza</a><a href="/sello">Sello</a><a href="/privacidad">Privacidad</a></nav></div></header>
+<header class="top"><div class="wrap nav"><a class="logo" href="/"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="28" cy="28" r="14" fill="none" stroke="#ef3340" stroke-width="6"/><path d="M38 38l12 12" stroke="#ef3340" stroke-width="7" stroke-linecap="round"/></svg>${h(NAME)}</a><nav><a href="/#que-mira">Qué analiza</a><a href="/sello">Sello</a><a href="/privacidad">Privacidad</a></nav></div></header>
 <main class="wrap">${body}</main>
 <footer class="foot"><div class="wrap"><p><b>${h(NAME)}</b> · Análisis pasivo y gratuito. Solo miramos lo que cualquier navegador ve. Nunca atacamos ni probamos contraseñas.</p>
 <p class="links"><a href="/aviso-legal">Aviso legal</a><a href="/privacidad">Privacidad</a><a href="/uso-responsable">Uso responsable</a></p></div></footer></body></html>`);
@@ -194,15 +194,23 @@ app.post('/verificar', limiter, async (req, res) => {
 // ---------- sello para poner en la web ----------
 function badge(domain, grade, score) {
   const col = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', E: '#dc2626', F: '#b91c1c' }[grade] || '#64748b';
-  const label = grade ? `Seguridad ${grade} · ${score}/100` : 'Sin analizar';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="44" role="img" aria-label="${h(label)}"><rect width="190" height="44" rx="10" fill="#0f172a"/><rect x="4" y="4" width="36" height="36" rx="8" fill="${col}"/>
-<text x="22" y="29" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#fff" text-anchor="middle">${h(grade || '?')}</text>
-<text x="50" y="19" font-family="Arial,sans-serif" font-size="11" fill="#94a3b8">${h(NAME)}</text><text x="50" y="34" font-family="Arial,sans-serif" font-size="13" font-weight="700" fill="#fff">${h(label)}</text></svg>`;
+  const label = grade ? `Seguridad ${grade} · ${score}/100 · CiviRed` : 'Sin analizar · CiviRed';
+  // Marca CiviRed: "Civi" en gris, "Red" en rojo y las ondas wifi sobre la d
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="190" height="44" viewBox="0 0 190 44" role="img" aria-label="${h(label)}">
+<rect width="190" height="44" rx="10" fill="#141414"/><rect x=".5" y=".5" width="189" height="43" rx="9.5" fill="none" stroke="#ef3340" stroke-opacity=".55"/>
+<text x="10" y="25" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" font-style="italic"><tspan fill="#c9c9c9">Civi</tspan><tspan fill="#ef3340">Red</tspan></text>
+<g fill="none" stroke="#c9c9c9" stroke-width="1.8" stroke-linecap="round"><path d="M77 9a6 6 0 0 1 6 6"/><path d="M77 5a10 10 0 0 1 10 10"/></g>
+<text x="10" y="37" font-family="Arial,Helvetica,sans-serif" font-size="8" font-weight="700" fill="#9a9a9a" textLength="86" lengthAdjust="spacingAndGlyphs">SELLO DE SEGURIDAD</text>
+<line x1="104" y1="9" x2="104" y2="35" stroke="#333"/>
+<rect x="111" y="7" width="30" height="30" rx="7" fill="${col}"/>
+<text x="126" y="28.5" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#fff" text-anchor="middle">${h(grade || '?')}</text>
+<text x="148" y="22" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#fff">${grade ? h(score) : '–'}<tspan font-size="8" fill="#9a9a9a">/100</tspan></text>
+<text x="148" y="34" font-family="Arial,Helvetica,sans-serif" font-size="8" fill="#9a9a9a">${grade ? 'analizado' : 'sin nota'}</text></svg>`;
 }
 app.get('/sello/:domain.svg', (req, res) => {
   const d = req.params.domain === 'ejemplo' ? null : normalizeDomain(req.params.domain);
   const s = d && db.prepare("SELECT grade, score FROM scans WHERE domain=? AND status='hecho' ORDER BY created_at DESC LIMIT 1").get(d);
-  res.type('image/svg+xml').set('cache-control', 'public, max-age=3600').send(req.params.domain === 'ejemplo' ? badge('', 'A', 94) : badge(d, s && s.grade, s && s.score));
+  res.type('image/svg+xml').set({ 'cache-control': 'public, max-age=3600', 'cross-origin-resource-policy': 'cross-origin' }).send(req.params.domain === 'ejemplo' ? badge('', 'A', 94) : badge(d, s && s.grade, s && s.score));
 });
 app.get('/sello', (req, res) => page(res, { title: `Sello de seguridad · ${NAME}`, body: `<section class="narrow prose"><h1>Pon el sello de seguridad en tu web</h1>
 <p>Analiza tu web y pega este código donde quieras (por ejemplo, en el pie de página). Cambia <code>tuweb.com</code> por tu dominio. El sello muestra siempre la nota del último análisis.</p>
